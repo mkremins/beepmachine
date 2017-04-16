@@ -1,4 +1,9 @@
 var Tone = {};
+Tone.Master = {};
+Tone.MembraneSynth = {};
+Tone.MembraneSynth.chain = function(){};
+Tone.MembraneSynth.toMaster = function(){};
+Tone.MembraneSynth.triggerAttackRelease = function(){};
 Tone.Loop = {};
 Tone.Loop.start = function(){};
 Tone.Loop.stop = function(){};
@@ -7,3 +12,4 @@ Tone.Synth.toMaster = function(){};
 Tone.Synth.triggerAttackRelease = function(){};
 Tone.Transport = {};
 Tone.Transport.start = function(){};
+Tone.Volume = {};
