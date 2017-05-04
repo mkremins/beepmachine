@@ -66,12 +66,21 @@
    "ArrowUp" shift-plinks-up-1
    "ArrowDown" shift-plinks-down-1})
 
+(defn display-key! [k]
+  (let [div (js/document.createElement "div")]
+    (.add (.-classList div) "key")
+    (set! (.-textContent div) k)
+    (set! (.-left (.-style div)) (str (rand-int js/window.innerWidth) "px"))
+    (set! (.-top (.-style div)) (str (rand-int js/window.innerHeight) "px"))
+    (js/document.body.appendChild div)))
+
 (defn handle-keydown! [ev]
   (.preventDefault ev)
   (.stopPropagation ev)
   (prn {:type :keydown :key (.-key ev) :char (.-char ev)})
   (when-let [keybind (get keybinds (.-key ev))]
-    (swap! app-state keybind)))
+    (swap! app-state keybind)
+    (display-key! (.-key ev))))
 
 (defn handle-keyup! [ev]
   (.preventDefault ev)
