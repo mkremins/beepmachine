@@ -40,6 +40,12 @@
           :spacing 8
           :duration 4}}))
 
+(defn double-beat-spacing [state]
+  (update-in state [:beat :spacing] #(if (>= % 32) % (* % 2))))
+
+(defn halve-beat-spacing [state]
+  (update-in state [:beat :spacing] #(/ % 2)))
+
 (defn shift-plinks-up-1 [state]
   (update-in state [:plink :notes] #(mapv inc %)))
 
@@ -61,7 +67,9 @@
 ;; main lifecycle
 
 (def keybinds
-  {"q" shuffle-plinks
+  {"d" double-beat-spacing
+   "h" halve-beat-spacing
+   "q" shuffle-plinks
    "r" reverse-plinks
    "ArrowUp" shift-plinks-up-1
    "ArrowDown" shift-plinks-down-1})
