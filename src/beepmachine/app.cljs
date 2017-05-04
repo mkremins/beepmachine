@@ -14,6 +14,11 @@
    16 "2n"
    32 "1n"})
 
+(defn note-id->note [id]
+  (let [octave (+ (quot id 5) 2)
+        letter (nth ["A" "B" "C#" "E" "F#"] (mod id 5))]
+    (str letter octave)))
+
 (defn should-play? [instrument tick]
   (zero? (mod tick (:spacing instrument))))
 
@@ -28,13 +33,24 @@
          {:synth (.toMaster (js/Tone.Synth.))
           :spacing 4
           :duration 2
-          :octave 4
-          :notes ["A" "B" "C#" "E" "F#"]
+          :notes [5 6 7 8 9]
           :note-idx 0}
          :beat
          {:synth (.chain (js/Tone.MembraneSynth.) (js/Tone.Volume. 10) js/Tone.Master)
           :spacing 8
           :duration 4}}))
+
+(defn shift-plinks-up-1 [state]
+  (update-in state [:plink :notes] #(mapv inc %)))
+
+(defn shift-plinks-down-1 [state]
+  (update-in state [:plink :notes] #(mapv dec %)))
+
+(defn shuffle-plinks [state]
+  (update-in state [:plink :notes] (comp vec shuffle)))
+
+(defn reverse-plinks [state]
+  (update-in state [:plink :notes] (comp vec reverse)))
 
 ;; rendering
 
@@ -44,10 +60,18 @@
 
 ;; main lifecycle
 
+(def keybinds
+  {"q" shuffle-plinks
+   "r" reverse-plinks
+   "ArrowUp" shift-plinks-up-1
+   "ArrowDown" shift-plinks-down-1})
+
 (defn handle-keydown! [ev]
   (.preventDefault ev)
   (.stopPropagation ev)
-  (prn {:type :keydown :key (.-key ev) :char (.-char ev)}))
+  (prn {:type :keydown :key (.-key ev) :char (.-char ev)})
+  (when-let [keybind (get keybinds (.-key ev))]
+    (swap! app-state keybind)))
 
 (defn handle-keyup! [ev]
   (.preventDefault ev)
@@ -61,7 +85,7 @@
     (when (should-play? plink tick)
       (println "play plink")
       (let [{:keys [notes note-idx]} plink
-            note (str (nth notes note-idx) (:octave plink))
+            note (note-id->note (nth notes note-idx))
             next-idx (if (>= note-idx (dec (count notes))) 0 (inc note-idx))]
         (play! plink note time)
         (swap! app-state assoc-in [:plink :note-idx] next-idx)))
