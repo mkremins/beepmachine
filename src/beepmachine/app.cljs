@@ -40,6 +40,9 @@
           :spacing 8
           :duration 4}}))
 
+(defn wrap-any-ultrahigh-plinks [state]
+  (update-in state [:plink :notes] (fn [notes] (mapv #(if (> % 29) 0 %) notes))))
+
 (defn double-beat-spacing [state]
   (update-in state [:beat :spacing] #(if (>= % 32) % (* % 2))))
 
@@ -47,7 +50,8 @@
   (update-in state [:beat :spacing] #(/ % 2)))
 
 (defn shift-plinks-up-1 [state]
-  (update-in state [:plink :notes] #(mapv inc %)))
+  (-> (update-in state [:plink :notes] #(mapv inc %))
+      wrap-any-ultrahigh-plinks))
 
 (defn shift-plinks-down-1 [state]
   (update-in state [:plink :notes] #(mapv dec %)))
@@ -57,6 +61,13 @@
 
 (defn reverse-plinks [state]
   (update-in state [:plink :notes] (comp vec reverse)))
+
+(defn drop-last-plink [state]
+  (update-in state [:plink :notes] #(if (empty? %) % (pop %))))
+
+(defn push-last-plink [state]
+  (-> (update-in state [:plink :notes] #(conj % (if (empty? %) 5 (inc (peek %)))))
+      wrap-any-ultrahigh-plinks))
 
 ;; rendering
 
@@ -72,7 +83,9 @@
    "q" shuffle-plinks
    "r" reverse-plinks
    "ArrowUp" shift-plinks-up-1
-   "ArrowDown" shift-plinks-down-1})
+   "ArrowDown" shift-plinks-down-1
+   "ArrowLeft" drop-last-plink
+   "ArrowRight" push-last-plink})
 
 (defn display-key! [k]
   (let [div (js/document.createElement "div")]
@@ -97,18 +110,16 @@
 
 (defn tick! [time]
   (let [{:keys [tick plink beat] :as state} @app-state]
-    (prn tick)
     ;; PLINK
     (when (should-play? plink tick)
-      (println "play plink")
       (let [{:keys [notes note-idx]} plink
-            note (note-id->note (nth notes note-idx))
+            note-id (get notes note-idx nil) 
             next-idx (if (>= note-idx (dec (count notes))) 0 (inc note-idx))]
-        (play! plink note time)
+        (when note-id
+          (play! plink (note-id->note note-id) time))
         (swap! app-state assoc-in [:plink :note-idx] next-idx)))
     ;; BEAT
     (when (should-play? beat tick)
-      (println "play beat")
       (play! beat "C#2" time)))
   (swap! app-state update :tick inc))
 
