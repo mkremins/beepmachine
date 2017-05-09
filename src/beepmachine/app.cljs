@@ -19,11 +19,20 @@
         letter (nth ["A" "B" "C#" "E" "F#"] (mod id 5))]
     (str letter octave)))
 
+(defn inc-pitch-or-wrap [note]
+  (update note :pitch #(if (> % 29) 0 (inc %))))
+
+(defn dec-pitch-or-wrap [note]
+  (update note :pitch #(if (< % 1) 29 (dec %))))
+
 (defn should-play? [instrument tick]
   (zero? (mod tick (:spacing instrument))))
 
-(defn play! [{:keys [synth duration]} note time]
-  (.triggerAttackRelease synth note (ticks->note-length duration) time))
+(defn play! [{:keys [synth]} {:keys [pitch duration]} time]
+  (.triggerAttackRelease synth
+    (if (string? pitch) pitch (note-id->note pitch))
+    (ticks->note-length duration)
+    time))
 
 ;; state
 
@@ -33,15 +42,40 @@
          {:synth (.toMaster (js/Tone.Synth.))
           :spacing 4
           :duration 2
-          :notes [5 6 7 8 9]
+          :notes [{:pitch 5 :duration 2}
+                  {:pitch 6 :duration 2}
+                  {:pitch 7 :duration 2}
+                  {:pitch 8 :duration 2}
+                  {:pitch 9 :duration 2}]
           :note-idx 0}
          :beat
          {:synth (.chain (js/Tone.MembraneSynth.) (js/Tone.Volume. 10) js/Tone.Master)
           :spacing 8
           :duration 4}}))
 
-(defn wrap-any-ultrahigh-plinks [state]
-  (update-in state [:plink :notes] (fn [notes] (mapv #(if (> % 29) 0 %) notes))))
+(defn raise-lowest-plink [state]
+  (update-in state [:plink :notes]
+    (fn [notes]
+      (if (empty? notes)
+        []
+        (let [lowest-pitch (apply min (map :pitch notes))]
+          (mapv (fn [note]
+                  (if (= (:pitch note) lowest-pitch)
+                    (inc-pitch-or-wrap note)
+                    note))
+                notes))))))
+
+(defn lower-highest-plink [state]
+  (update-in state [:plink :notes]
+    (fn [notes]
+      (if (empty? notes)
+        []
+        (let [highest-pitch (apply max (map :pitch notes))]
+          (mapv (fn [note]
+                  (if (= (:pitch note) highest-pitch)
+                    (dec-pitch-or-wrap note)
+                    note))
+                notes))))))
 
 (defn double-beat-spacing [state]
   (update-in state [:beat :spacing] #(if (>= % 32) % (* % 2))))
@@ -50,11 +84,10 @@
   (update-in state [:beat :spacing] #(/ % 2)))
 
 (defn shift-plinks-up-1 [state]
-  (-> (update-in state [:plink :notes] #(mapv inc %))
-      wrap-any-ultrahigh-plinks))
+  (update-in state [:plink :notes] #(mapv inc-pitch-or-wrap %)))
 
 (defn shift-plinks-down-1 [state]
-  (update-in state [:plink :notes] #(mapv dec %)))
+  (update-in state [:plink :notes] #(mapv dec-pitch-or-wrap %)))
 
 (defn shuffle-plinks [state]
   (update-in state [:plink :notes] (comp vec shuffle)))
@@ -66,8 +99,34 @@
   (update-in state [:plink :notes] #(if (empty? %) % (pop %))))
 
 (defn push-last-plink [state]
-  (-> (update-in state [:plink :notes] #(conj % (if (empty? %) 5 (inc (peek %)))))
-      wrap-any-ultrahigh-plinks))
+  (update-in state [:plink :notes]
+    #(conj % (if (empty? %)
+               {:pitch 5 :duration 2}
+               (inc-pitch-or-wrap (peek %))))))
+
+(defn extend-first-short-plink [state]
+  (update-in state [:plink :notes]
+    (fn [notes]
+      (if (empty? notes)
+        []
+        (let [avg-duration (/ (reduce + (map :duration notes)) (count notes))
+              idx (loop [i 0]
+                    (if (<= (:duration (nth notes i)) avg-duration)
+                      i
+                      (recur (inc i))))]
+          (update-in notes [idx :duration] #(* % 2)))))))
+
+(defn shorten-first-long-plink [state]
+  (update-in state [:plink :notes]
+    (fn [notes]
+      (if (empty? notes)
+        []
+        (let [avg-duration (/ (reduce + (map :duration notes)) (count notes))
+              idx (loop [i 0]
+                    (if (>= (:duration (nth notes i)) avg-duration)
+                      i
+                      (recur (inc i))))]
+          (update-in notes [idx :duration] #(if (> % 1) (/ % 2) %)))))))
 
 ;; rendering
 
@@ -77,11 +136,21 @@
 
 ;; main lifecycle
 
+(def charmap
+  {"ArrowUp" "↑"
+   "ArrowDown" "↓"
+   "ArrowLeft" "←"
+   "ArrowRight" "→"})
+
 (def keybinds
-  {"d" double-beat-spacing
+  {"a" raise-lowest-plink
+   "d" double-beat-spacing
+   "e" extend-first-short-plink
    "h" halve-beat-spacing
    "q" shuffle-plinks
    "r" reverse-plinks
+   "s" shorten-first-long-plink
+   "z" lower-highest-plink
    "ArrowUp" shift-plinks-up-1
    "ArrowDown" shift-plinks-down-1
    "ArrowLeft" drop-last-plink
@@ -101,7 +170,7 @@
   (prn {:type :keydown :key (.-key ev) :char (.-char ev)})
   (when-let [keybind (get keybinds (.-key ev))]
     (swap! app-state keybind)
-    (display-key! (.-key ev))))
+    (display-key! (get charmap (.-key ev) (.-key ev)))))
 
 (defn handle-keyup! [ev]
   (.preventDefault ev)
@@ -113,14 +182,14 @@
     ;; PLINK
     (when (should-play? plink tick)
       (let [{:keys [notes note-idx]} plink
-            note-id (get notes note-idx nil) 
+            note (get notes note-idx nil) 
             next-idx (if (>= note-idx (dec (count notes))) 0 (inc note-idx))]
-        (when note-id
-          (play! plink (note-id->note note-id) time))
+        (when note
+          (play! plink note time))
         (swap! app-state assoc-in [:plink :note-idx] next-idx)))
     ;; BEAT
     (when (should-play? beat tick)
-      (play! beat "C#2" time)))
+      (play! beat {:pitch "C#2" :duration 4} time)))
   (swap! app-state update :tick inc))
 
 (defn init! []
