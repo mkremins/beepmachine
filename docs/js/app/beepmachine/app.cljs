@@ -41,7 +41,6 @@
          :plink
          {:synth (.toMaster (js/Tone.Synth.))
           :spacing 4
-          :duration 2
           :notes [{:pitch 5 :duration 2}
                   {:pitch 6 :duration 2}
                   {:pitch 7 :duration 2}
@@ -52,6 +51,19 @@
          {:synth (.chain (js/Tone.MembraneSynth.) (js/Tone.Volume. 10) js/Tone.Master)
           :spacing 8
           :duration 4}}))
+
+(defn clear-state [state]
+  (-> state
+      (update :plink merge
+        {:spacing 4
+         :notes [{:pitch 5 :duration 2}
+                 {:pitch 6 :duration 2}
+                 {:pitch 7 :duration 2}
+                 {:pitch 8 :duration 2}
+                 {:pitch 9 :duration 2}]})
+      (update :beat merge
+        {:spacing 8
+         :duration 4})))
 
 (defn raise-lowest-plink [state]
   (update-in state [:plink :notes]
@@ -144,6 +156,7 @@
 
 (def keybinds
   {"a" raise-lowest-plink
+   "c" clear-state
    "d" double-beat-spacing
    "e" extend-first-short-plink
    "h" halve-beat-spacing
